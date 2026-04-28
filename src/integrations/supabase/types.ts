@@ -14,16 +14,244 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      alertas: {
+        Row: {
+          aplicacion_id: string | null
+          created_at: string
+          destinatario_id: string
+          id: string
+          leida: boolean
+          mensaje: string
+          severidad: string
+          tipo: string
+        }
+        Insert: {
+          aplicacion_id?: string | null
+          created_at?: string
+          destinatario_id: string
+          id?: string
+          leida?: boolean
+          mensaje: string
+          severidad?: string
+          tipo: string
+        }
+        Update: {
+          aplicacion_id?: string | null
+          created_at?: string
+          destinatario_id?: string
+          id?: string
+          leida?: boolean
+          mensaje?: string
+          severidad?: string
+          tipo?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "alertas_aplicacion_id_fkey"
+            columns: ["aplicacion_id"]
+            isOneToOne: false
+            referencedRelation: "aplicaciones"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      apiarios: {
+        Row: {
+          contacto_telefono: string | null
+          created_at: string
+          id: string
+          latitud: number
+          longitud: number
+          nombre: string
+          num_colmenas: number
+          radio_proteccion_m: number
+          user_id: string
+        }
+        Insert: {
+          contacto_telefono?: string | null
+          created_at?: string
+          id?: string
+          latitud: number
+          longitud: number
+          nombre: string
+          num_colmenas?: number
+          radio_proteccion_m?: number
+          user_id: string
+        }
+        Update: {
+          contacto_telefono?: string | null
+          created_at?: string
+          id?: string
+          latitud?: number
+          longitud?: number
+          nombre?: string
+          num_colmenas?: number
+          radio_proteccion_m?: number
+          user_id?: string
+        }
+        Relationships: []
+      }
+      aplicaciones: {
+        Row: {
+          created_at: string
+          dosis: string | null
+          estado: string
+          fecha_planificada: string
+          finca_id: string
+          humedad_pct: number | null
+          id: string
+          producto: string
+          riesgo_deriva: string
+          temperatura_c: number | null
+          user_id: string
+          ventana_optima_fin: string | null
+          ventana_optima_inicio: string | null
+          viento_kmh: number | null
+        }
+        Insert: {
+          created_at?: string
+          dosis?: string | null
+          estado?: string
+          fecha_planificada: string
+          finca_id: string
+          humedad_pct?: number | null
+          id?: string
+          producto: string
+          riesgo_deriva?: string
+          temperatura_c?: number | null
+          user_id: string
+          ventana_optima_fin?: string | null
+          ventana_optima_inicio?: string | null
+          viento_kmh?: number | null
+        }
+        Update: {
+          created_at?: string
+          dosis?: string | null
+          estado?: string
+          fecha_planificada?: string
+          finca_id?: string
+          humedad_pct?: number | null
+          id?: string
+          producto?: string
+          riesgo_deriva?: string
+          temperatura_c?: number | null
+          user_id?: string
+          ventana_optima_fin?: string | null
+          ventana_optima_inicio?: string | null
+          viento_kmh?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "aplicaciones_finca_id_fkey"
+            columns: ["finca_id"]
+            isOneToOne: false
+            referencedRelation: "fincas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      fincas: {
+        Row: {
+          area_hectareas: number | null
+          certificaciones: string[] | null
+          created_at: string
+          cultivo: string
+          id: string
+          latitud: number
+          longitud: number
+          nombre: string
+          organica: boolean | null
+          user_id: string
+        }
+        Insert: {
+          area_hectareas?: number | null
+          certificaciones?: string[] | null
+          created_at?: string
+          cultivo: string
+          id?: string
+          latitud: number
+          longitud: number
+          nombre: string
+          organica?: boolean | null
+          user_id: string
+        }
+        Update: {
+          area_hectareas?: number | null
+          certificaciones?: string[] | null
+          created_at?: string
+          cultivo?: string
+          id?: string
+          latitud?: number
+          longitud?: number
+          nombre?: string
+          organica?: boolean | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          created_at: string
+          id: string
+          nombre: string
+          telefono: string | null
+          tipo_usuario: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id: string
+          nombre: string
+          telefono?: string | null
+          tipo_usuario?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          nombre?: string
+          telefono?: string | null
+          tipo_usuario?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      user_roles: {
+        Row: {
+          created_at: string
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
     }
     Enums: {
-      [_ in never]: never
+      app_role: "admin" | "agricultor" | "apicultor" | "tecnico"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -150,6 +378,8 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      app_role: ["admin", "agricultor", "apicultor", "tecnico"],
+    },
   },
 } as const
