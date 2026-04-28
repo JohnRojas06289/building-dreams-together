@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as ImpactoRouteImport } from './routes/impacto'
+import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as ComoFuncionaRouteImport } from './routes/como-funciona'
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as IndexRouteImport } from './routes/index'
@@ -17,6 +18,11 @@ import { Route as IndexRouteImport } from './routes/index'
 const ImpactoRoute = ImpactoRouteImport.update({
   id: '/impacto',
   path: '/impacto',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DashboardRoute = DashboardRouteImport.update({
+  id: '/dashboard',
+  path: '/dashboard',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ComoFuncionaRoute = ComoFuncionaRouteImport.update({
@@ -39,12 +45,14 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
   '/como-funciona': typeof ComoFuncionaRoute
+  '/dashboard': typeof DashboardRoute
   '/impacto': typeof ImpactoRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
   '/como-funciona': typeof ComoFuncionaRoute
+  '/dashboard': typeof DashboardRoute
   '/impacto': typeof ImpactoRoute
 }
 export interface FileRoutesById {
@@ -52,20 +60,22 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
   '/como-funciona': typeof ComoFuncionaRoute
+  '/dashboard': typeof DashboardRoute
   '/impacto': typeof ImpactoRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/auth' | '/como-funciona' | '/impacto'
+  fullPaths: '/' | '/auth' | '/como-funciona' | '/dashboard' | '/impacto'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/auth' | '/como-funciona' | '/impacto'
-  id: '__root__' | '/' | '/auth' | '/como-funciona' | '/impacto'
+  to: '/' | '/auth' | '/como-funciona' | '/dashboard' | '/impacto'
+  id: '__root__' | '/' | '/auth' | '/como-funciona' | '/dashboard' | '/impacto'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthRoute: typeof AuthRoute
   ComoFuncionaRoute: typeof ComoFuncionaRoute
+  DashboardRoute: typeof DashboardRoute
   ImpactoRoute: typeof ImpactoRoute
 }
 
@@ -76,6 +86,13 @@ declare module '@tanstack/react-router' {
       path: '/impacto'
       fullPath: '/impacto'
       preLoaderRoute: typeof ImpactoRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/dashboard': {
+      id: '/dashboard'
+      path: '/dashboard'
+      fullPath: '/dashboard'
+      preLoaderRoute: typeof DashboardRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/como-funciona': {
@@ -106,6 +123,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthRoute: AuthRoute,
   ComoFuncionaRoute: ComoFuncionaRoute,
+  DashboardRoute: DashboardRoute,
   ImpactoRoute: ImpactoRoute,
 }
 export const routeTree = rootRouteImport
