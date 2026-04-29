@@ -5,6 +5,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { supabase } from "@/integrations/supabase/client";
 import { Loader2, Send, Bot, User, ShieldCheck, AlertTriangle } from "lucide-react";
 
 export const Route = createFileRoute("/agente")({
@@ -223,68 +224,29 @@ const EXAMPLE_QUESTIONS = [
 // ─── Gemini API call ─────────────────────────────────────────────────────────
 
 async function callGemini(messages: Message[]): Promise<string> {
-  const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+  const { data, error } = await supabase.functions.invoke("gemini-proxy", {
+    body: {
+      messages,
+      systemPrompt: SYSTEM_PROMPT,
+    },
+  });
 
-  if (!apiKey) {
-    return "⚠ **API key no configurada.** Agrega `VITE_GEMINI_API_KEY` en tu archivo `.env` para activar el agente.\n\nPuedes obtener una clave gratuita en [aistudio.google.com](https://aistudio.google.com).";
+  if (error) {
+    throw new Error(error.message);
   }
 
-  // Build Gemini contents array from message history
-  const contents = messages.map((m) => ({
-    role: m.role === "assistant" ? "model" : "user",
-    parts: [{ text: m.content }],
-  }));
-
-  const body = {
-    systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
-    contents,
-    generationConfig: {
-      temperature: 0.2, // Low temp → more deterministic, fewer hallucinations
-      maxOutputTokens: 1024,
-    },
-  };
-
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    },
-  );
-
-  if (!res.ok) {
-    if (res.status === 429) {
-      const data = await res.json().catch(() => ({}));
-      const retryDelay: string =
-        data?.error?.details?.find(
-          (d: { "@type": string; retryDelay?: string }) =>
-            d["@type"] === "type.googleapis.com/google.rpc.RetryInfo",
-        )?.retryDelay ?? "";
-      const seconds = retryDelay ? ` Intenta de nuevo en ${retryDelay}.` : "";
-      throw new Error(
-        `Cuota de API agotada (429).${seconds} Verifica el plan y la facturación en console.cloud.google.com o genera una nueva API key en aistudio.google.com.`,
-      );
-    }
-    const err = await res.text();
-    throw new Error(`Gemini API error ${res.status}: ${err}`);
+  if (!data?.text) {
+    throw new Error(data?.error ?? "Sin respuesta del proxy Gemini.");
   }
 
-  const data = await res.json();
-  const text: string =
-    data?.candidates?.[0]?.content?.parts?.[0]?.text ?? "Sin respuesta del modelo.";
-  return text;
+  return data.text as string;
 }
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
 function MessageBubble({ msg }: { msg: Message }) {
   const isUser = msg.role === "user";
-
-  // Extract citations from markdown [text] patterns and highlight
-  const formattedContent = msg.content
-    .replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>")
-    .replace(/\n/g, "<br/>");
+  const lines = msg.content.split("\n");
 
   return (
     <div className={`flex gap-3 ${isUser ? "flex-row-reverse" : "flex-row"}`}>
@@ -305,7 +267,18 @@ function MessageBubble({ msg }: { msg: Message }) {
         {isUser ? (
           msg.content
         ) : (
-          <div dangerouslySetInnerHTML={{ __html: formattedContent }} />
+          <div className="space-y-1">
+            {lines.map((line, index) => (
+              <p key={`${line}-${index}`} className="whitespace-pre-wrap break-words">
+                {line.split(/(\*\*.*?\*\*)/g).map((chunk, chunkIndex) => {
+                  if (chunk.startsWith("**") && chunk.endsWith("**")) {
+                    return <strong key={chunkIndex}>{chunk.slice(2, -2)}</strong>;
+                  }
+                  return chunk;
+                })}
+              </p>
+            ))}
+          </div>
         )}
       </div>
     </div>
@@ -466,7 +439,7 @@ export function AgentePage() {
               </Button>
             </form>
             <p className="mt-2 text-center text-xs text-muted-foreground">
-              Powered by Gemini 2.5 Flash · ICA Res. 740/2023 · Res. 1806/2004 · Res. 3759/2003 · Ley 1968/2019 · LMR Codex/UE/USA · SISPAP · DIAN · MADS
+              Powered by Gemini 2.5 Flash vía Supabase Edge Function · ICA Res. 740/2023 · Res. 1806/2004 · Res. 3759/2003 · Ley 1968/2019 · LMR Codex/UE/USA · SISPAP · DIAN · MADS
             </p>
           </div>
         </Card>

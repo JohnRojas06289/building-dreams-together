@@ -6,11 +6,31 @@ export function useAuth() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    setUser(authStore.getUser());
-    setLoading(false);
-    const sync = () => setUser(authStore.getUser());
-    window.addEventListener("agrosync_auth", sync);
-    return () => window.removeEventListener("agrosync_auth", sync);
+    let mounted = true;
+
+    const sync = async () => {
+      try {
+        const nextUser = await authStore.getUser();
+        if (mounted) {
+          setUser(nextUser);
+        }
+      } finally {
+        if (mounted) {
+          setLoading(false);
+        }
+      }
+    };
+
+    void sync();
+    const unsubscribe = authStore.onChange(() => {
+      setLoading(true);
+      void sync();
+    });
+
+    return () => {
+      mounted = false;
+      unsubscribe();
+    };
   }, []);
 
   return { user, loading };

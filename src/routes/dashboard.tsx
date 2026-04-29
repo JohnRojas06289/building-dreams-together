@@ -6,6 +6,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Slider } from "@/components/ui/slider";
 import {
@@ -17,18 +18,25 @@ import { toast } from "sonner";
 import {
   Loader2, Plus, Wind, Droplets, Sprout, Hexagon, Trash2,
   ShieldCheck, MoveVertical, Bot, MessageSquare, AlertTriangle,
-  Satellite, FileDown,
+  Satellite, FileDown, Compass, Thermometer, Cloud,
 } from "lucide-react";
 import {
   assessRisk, driftRadius, driftUncertainty, optimalWindow, riskBg,
-  type Apiary, type Finca,
+  classifyPasquillStability, type Apiary, type ApplicationType, type Finca,
 } from "@/lib/agrosync";
 import {
   getFincas, createFinca, getApiarios, createApiario, deleteApiario,
-  getAlertas, createAlertas, type FincaRow, type ApiarioRow,
+  getAlertas, createAlertas, type FincaRow, type ApiarioRow, type AlertaRow,
 } from "@/lib/store";
 import { fetchAllClimate } from "@/lib/climate-api";
 import { exportCertificatePdf } from "@/lib/pdf-export";
+import { FincaDrawingField } from "@/components/FincaDrawingField";
+import {
+  approximateAreaHectares,
+  centroidFromPolygon,
+  polygonToGeoJson,
+  type GeoPoint,
+} from "@/lib/geo";
 
 export const Route = createFileRoute("/dashboard")({
   component: Dashboard,
@@ -42,12 +50,17 @@ function Dashboard() {
   const [apiarios, setApiarios] = useState<ApiarioRow[]>([]);
   const [selectedFincaId, setSelectedFincaId] = useState<string | null>(null);
   const [wind, setWind] = useState(8);
+  const [windDirection, setWindDirection] = useState(90);
   const [humidity, setHumidity] = useState(75);
+  const [temperature, setTemperature] = useState(24);
+  const [cloudCover, setCloudCover] = useState(45);
   const [slope, setSlope] = useState(15);
+  const [applicationType, setApplicationType] = useState<ApplicationType>("terrestre");
   const [climateSource, setClimateSource] = useState<"manual" | "nasa">("manual");
   const [climateLoading, setClimateLoading] = useState(false);
   const [climateDate, setClimateDate] = useState<string | null>(null);
   const [MapView, setMapView] = useState<any>(null);
+  const [alertsReloadKey, setAlertsReloadKey] = useState(0);
 
   useEffect(() => {
     if (!loading && !user) navigate({ to: "/auth" });
@@ -57,15 +70,22 @@ function Dashboard() {
     import("@/components/RiskMap").then(m => setMapView(() => m.RiskMap));
   }, []);
 
-  const refresh = () => {
+  const refresh = async () => {
     if (!user) return;
-    const f = getFincas(user.id);
-    setFincas(f);
-    if (!selectedFincaId && f[0]) setSelectedFincaId(f[0].id);
-    setApiarios(getApiarios());
+    try {
+      const [f, apiariosRows] = await Promise.all([getFincas(user.id), getApiarios()]);
+      setFincas(f);
+      setSelectedFincaId((current) => current ?? f[0]?.id ?? null);
+      setApiarios(apiariosRows);
+      setAlertsReloadKey((current) => current + 1);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No se pudieron cargar los datos");
+    }
   };
 
-  useEffect(() => { if (user) refresh(); }, [user]); // eslint-disable-line
+  useEffect(() => {
+    if (user) void refresh();
+  }, [user]); // eslint-disable-line
 
   const selectedFinca = useMemo(
     () => fincas.find(f => f.id === selectedFincaId) ?? null,
@@ -79,7 +99,9 @@ function Dashboard() {
     fetchAllClimate(selectedFinca.latitud, selectedFinca.longitud)
       .then(({ climate, slope: slopeFetched }) => {
         setWind(Math.min(40, climate.windKmh));
+        setWindDirection(climate.windDirectionDeg);
         setHumidity(climate.humidity);
+        setTemperature(climate.temperatureC);
         if (slopeFetched !== null) setSlope(slopeFetched);
         setClimateSource("nasa");
         setClimateDate(climate.date);
@@ -94,14 +116,36 @@ function Dashboard() {
   // Cast to Finca/Apiary shapes (compatible subsets)
   const fincaForCalc = selectedFinca as unknown as Finca | null;
   const apiariosForCalc = apiarios as unknown as Apiary[];
+  const driftInputs = useMemo(
+    () => ({
+      windKmh: wind,
+      windDirectionDeg: windDirection,
+      humidity,
+      temperatureC: temperature,
+      cloudCoverPct: cloudCover,
+      slopeDeg: slope,
+      applicationType,
+    }),
+    [applicationType, cloudCover, humidity, slope, temperature, wind, windDirection],
+  );
 
   const assessment = useMemo(
-    () => fincaForCalc ? assessRisk(fincaForCalc, apiariosForCalc, wind, humidity, slope) : null,
-    [fincaForCalc, apiariosForCalc, wind, humidity, slope],
+    () => fincaForCalc ? assessRisk(fincaForCalc, apiariosForCalc, driftInputs) : null,
+    [apiariosForCalc, driftInputs, fincaForCalc],
   );
-  const window_ = useMemo(() => optimalWindow(wind, slope), [wind, slope]);
-  const radius   = useMemo(() => driftRadius(wind, humidity, slope), [wind, humidity, slope]);
-  const uncertainty = useMemo(() => driftUncertainty(radius, slope), [radius, slope]);
+  const stabilityClass = useMemo(
+    () => classifyPasquillStability(wind, cloudCover),
+    [cloudCover, wind],
+  );
+  const window_ = useMemo(() => optimalWindow(driftInputs), [driftInputs]);
+  const radius = useMemo(
+    () => assessment?.radius ?? driftRadius(driftInputs),
+    [assessment?.radius, driftInputs],
+  );
+  const uncertainty = useMemo(
+    () => assessment?.uncertainty ?? driftUncertainty(radius, slope, cloudCover),
+    [assessment?.uncertainty, cloudCover, radius, slope],
+  );
 
   if (loading || !user) {
     return (
@@ -156,6 +200,7 @@ function Dashboard() {
                   driftRadius={radius}
                   uncertaintyRadius={uncertainty}
                   affectedIds={new Set(assessment?.affected.map(a => a.id) ?? [])}
+                  plumePath={assessment?.plumePath ?? []}
                 />
               ) : (
                 <div className="flex h-full items-center justify-center text-muted-foreground">
@@ -191,14 +236,40 @@ function Dashboard() {
                   display={`${wind} km/h`} onChange={(v) => { setWind(v); setClimateSource("manual"); }}
                 />
                 <SliderField
+                  icon={Compass} label="Dirección del viento" value={windDirection} max={360}
+                  display={`${windDirection}°`} onChange={(v) => { setWindDirection(v); setClimateSource("manual"); }}
+                  hint="Dirección meteorológica: el ángulo desde donde sopla."
+                />
+                <SliderField
                   icon={Droplets} label="Humedad" value={humidity} min={20} max={100}
                   display={`${humidity}%`} onChange={(v) => { setHumidity(v); setClimateSource("manual"); }}
+                />
+                <SliderField
+                  icon={Thermometer} label="Temperatura" value={temperature} min={10} max={40}
+                  display={`${temperature}°C`} onChange={(v) => { setTemperature(v); setClimateSource("manual"); }}
+                />
+                <SliderField
+                  icon={Cloud} label="Cobertura de nubes" value={cloudCover} min={0} max={100}
+                  display={`${cloudCover}%`} onChange={(v) => { setCloudCover(v); setClimateSource("manual"); }}
+                  hint="Se usa para estimar la estabilidad Pasquill-Gifford."
                 />
                 <SliderField
                   icon={MoveVertical} label="Pendiente andina" value={slope} max={45}
                   display={`${slope}°`} onChange={(v) => { setSlope(v); setClimateSource("manual"); }}
                   hint="Efecto venturi andino · ICA Res. 740/2023, Art. 12"
                 />
+                <div className="space-y-2">
+                  <Label>Tipo de aplicación</Label>
+                  <Select value={applicationType} onValueChange={(value) => setApplicationType(value as ApplicationType)}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="terrestre">Terrestre · tractor / bomba de espalda</SelectItem>
+                      <SelectItem value="aerea">Aérea · dron / avioneta</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
             </Card>
 
@@ -211,8 +282,9 @@ function Dashboard() {
                 {assessment ? `Riesgo ${assessment.level}` : "Sin finca seleccionada"}
               </div>
               <div className="mt-3 space-y-1.5 text-sm">
-                <Row label="Radio de dispersión" value={`${(radius / 1000).toFixed(2)} km`} />
+                <Row label="Pluma máxima" value={`${(radius / 1000).toFixed(2)} km`} />
                 <Row label="Margen de incertidumbre" value={`±${uncertainty} m`} />
+                <Row label="Estabilidad" value={`Clase ${assessment?.stabilityClass ?? stabilityClass}`} />
                 <Row
                   label="Apiarios en zona de riesgo"
                   value={assessment ? `${assessment.affected.length}` : "—"}
@@ -223,7 +295,7 @@ function Dashboard() {
                 )}
               </div>
               <div className="mt-3 border-t border-current/10 pt-3 text-xs opacity-60">
-                Citación: Res. ICA 740/2023, Art. 12 · Modelo IDEAM coef. variación
+                Modelo de pluma gaussiana · Pasquill-Gifford · corrección topográfica ≥15°
               </div>
               <div className="mt-3 flex flex-col gap-2">
                 {selectedFinca && (
@@ -350,7 +422,7 @@ function Dashboard() {
           </TabsContent>
 
           <TabsContent value="alertas" className="mt-4">
-            <AlertasList userId={user.id} />
+            <AlertasList userId={user.id} reloadKey={alertsReloadKey} />
           </TabsContent>
         </Tabs>
       </main>
@@ -384,12 +456,18 @@ function SmsPreviewDialog({
       severidad: "alta",
       mensaje: smsText,
     }));
-    createAlertas(rows);
-    setSending(false);
-    setSent(true);
-    toast.success(`Alertas enviadas a ${affected.length} apicultor(es)`);
-    onSent();
-    setTimeout(() => { setOpen(false); setSent(false); }, 1800);
+
+    void createAlertas(rows)
+      .then(() => {
+        setSent(true);
+        toast.success(`Alertas enviadas a ${affected.length} apicultor(es)`);
+        onSent();
+        setTimeout(() => { setOpen(false); setSent(false); }, 1800);
+      })
+      .catch((error: unknown) => {
+        toast.error(error instanceof Error ? error.message : "No se pudieron enviar las alertas");
+      })
+      .finally(() => setSending(false));
   };
 
   return (
@@ -490,24 +568,58 @@ function EmptyHint({ label }: { label: string }) {
 function NewFincaDialog({ userId, onCreated }: { userId: string; onCreated: () => void }) {
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ nombre: "", cultivo: "Aguacate Hass", latitud: "5.0689", longitud: "-75.5174", organica: false });
+  const [polygonPath, setPolygonPath] = useState<GeoPoint[]>([]);
   const [loading, setLoading] = useState(false);
+  const polygonCentroid = useMemo(
+    () => (polygonPath.length >= 3 ? centroidFromPolygon(polygonPath) : null),
+    [polygonPath],
+  );
+  const polygonArea = useMemo(
+    () => (polygonPath.length >= 3 ? approximateAreaHectares(polygonPath) : null),
+    [polygonPath],
+  );
+
+  useEffect(() => {
+    if (!polygonCentroid) return;
+    setForm((current) => ({
+      ...current,
+      latitud: polygonCentroid.lat.toFixed(6),
+      longitud: polygonCentroid.lng.toFixed(6),
+    }));
+  }, [polygonCentroid]);
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
+    const latitud = polygonCentroid?.lat ?? parseFloat(form.latitud);
+    const longitud = polygonCentroid?.lng ?? parseFloat(form.longitud);
+
+    if (!Number.isFinite(latitud) || !Number.isFinite(longitud)) {
+      toast.error("Ingresa coordenadas válidas para la finca.");
+      return;
+    }
+
     setLoading(true);
-    createFinca({
+    void createFinca({
       user_id: userId,
       nombre: form.nombre,
       cultivo: form.cultivo,
-      latitud: parseFloat(form.latitud),
-      longitud: parseFloat(form.longitud),
+      latitud,
+      longitud,
       organica: form.organica,
+      area_hectareas: polygonArea,
+      poligono_geojson: polygonToGeoJson(polygonPath),
       certificaciones: [],
-    });
-    setLoading(false);
-    toast.success("Finca registrada");
-    setOpen(false);
-    onCreated();
+    })
+      .then(() => {
+        toast.success("Finca registrada");
+        setPolygonPath([]);
+        setOpen(false);
+        onCreated();
+      })
+      .catch((error: unknown) => {
+        toast.error(error instanceof Error ? error.message : "No se pudo registrar la finca");
+      })
+      .finally(() => setLoading(false));
   };
 
   return (
@@ -515,15 +627,23 @@ function NewFincaDialog({ userId, onCreated }: { userId: string; onCreated: () =
       <DialogTrigger asChild>
         <Button variant="outline"><Plus className="mr-1 h-4 w-4" />Finca</Button>
       </DialogTrigger>
-      <DialogContent>
+      <DialogContent className="max-w-3xl">
         <DialogHeader><DialogTitle>Nueva finca</DialogTitle></DialogHeader>
         <form onSubmit={submit} className="space-y-4">
           <Field label="Nombre"><Input required value={form.nombre} onChange={e => setForm({ ...form, nombre: e.target.value })} /></Field>
           <Field label="Cultivo"><Input required value={form.cultivo} onChange={e => setForm({ ...form, cultivo: e.target.value })} /></Field>
+          <FincaDrawingField initialPath={polygonPath} onChange={setPolygonPath} />
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Latitud"><Input required value={form.latitud} onChange={e => setForm({ ...form, latitud: e.target.value })} /></Field>
-            <Field label="Longitud"><Input required value={form.longitud} onChange={e => setForm({ ...form, longitud: e.target.value })} /></Field>
+            <Field label="Latitud">
+              <Input required value={form.latitud} readOnly={polygonPath.length >= 3} onChange={e => setForm({ ...form, latitud: e.target.value })} />
+            </Field>
+            <Field label="Longitud">
+              <Input required value={form.longitud} readOnly={polygonPath.length >= 3} onChange={e => setForm({ ...form, longitud: e.target.value })} />
+            </Field>
           </div>
+          <p className="text-xs text-muted-foreground">
+            Si delimitas la finca en Google Maps, el sistema calcula automáticamente el centroide y el área aproximada.
+          </p>
           <DialogFooter>
             <Button type="submit" disabled={loading}>
               {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Guardar
@@ -542,19 +662,39 @@ function NewApiarioDialog({ userId, onCreated }: { userId: string; onCreated: ()
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
+    const latitud = parseFloat(form.latitud);
+    const longitud = parseFloat(form.longitud);
+    const numColmenas = parseInt(form.num_colmenas, 10);
+    const radioProteccion = parseInt(form.radio_proteccion_m, 10);
+
+    if (
+      !Number.isFinite(latitud) ||
+      !Number.isFinite(longitud) ||
+      !Number.isFinite(numColmenas) ||
+      !Number.isFinite(radioProteccion)
+    ) {
+      toast.error("Completa datos válidos para el apiario.");
+      return;
+    }
+
     setLoading(true);
-    createApiario({
+    void createApiario({
       user_id: userId,
       nombre: form.nombre,
-      latitud: parseFloat(form.latitud),
-      longitud: parseFloat(form.longitud),
-      num_colmenas: parseInt(form.num_colmenas),
-      radio_proteccion_m: parseInt(form.radio_proteccion_m),
-    });
-    setLoading(false);
-    toast.success("Apiario registrado en ColmenaSegura");
-    setOpen(false);
-    onCreated();
+      latitud,
+      longitud,
+      num_colmenas: numColmenas,
+      radio_proteccion_m: radioProteccion,
+    })
+      .then(() => {
+        toast.success("Apiario registrado en ColmenaSegura");
+        setOpen(false);
+        onCreated();
+      })
+      .catch((error: unknown) => {
+        toast.error(error instanceof Error ? error.message : "No se pudo registrar el apiario");
+      })
+      .finally(() => setLoading(false));
   };
 
   return (
@@ -594,7 +734,16 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 function DeleteApiarioBtn({ id, onDone }: { id: string; onDone: () => void }) {
   return (
     <Button
-      onClick={() => { deleteApiario(id); toast.success("Apiario eliminado"); onDone(); }}
+      onClick={() => {
+        void deleteApiario(id)
+          .then(() => {
+            toast.success("Apiario eliminado");
+            onDone();
+          })
+          .catch((error: unknown) => {
+            toast.error(error instanceof Error ? error.message : "No se pudo eliminar el apiario");
+          });
+      }}
       size="icon" variant="ghost" className="h-8 w-8"
     >
       <Trash2 className="h-4 w-4" />
@@ -602,8 +751,31 @@ function DeleteApiarioBtn({ id, onDone }: { id: string; onDone: () => void }) {
   );
 }
 
-function AlertasList({ userId }: { userId: string }) {
-  const items = getAlertas(userId);
+function AlertasList({ userId, reloadKey }: { userId: string; reloadKey: number }) {
+  const [items, setItems] = useState<AlertaRow[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let mounted = true;
+    setLoading(true);
+
+    void getAlertas(userId)
+      .then((rows) => {
+        if (mounted) setItems(rows);
+      })
+      .catch((error: unknown) => {
+        toast.error(error instanceof Error ? error.message : "No se pudieron cargar las alertas");
+      })
+      .finally(() => {
+        if (mounted) setLoading(false);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [userId, reloadKey]);
+
+  if (loading) return <EmptyHint label="Cargando alertas..." />;
   if (items.length === 0) return <EmptyHint label="Sin alertas. Tu zona está despejada." />;
   return (
     <div className="space-y-2">

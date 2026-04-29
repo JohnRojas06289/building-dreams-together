@@ -10,23 +10,12 @@ import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@
 import { authStore } from "@/lib/auth-store";
 import { useAuth } from "@/hooks/use-auth";
 import { toast } from "sonner";
-import { Loader2, Sprout, Hexagon, Wrench, ShieldCheck } from "lucide-react";
+import { Loader2 } from "lucide-react";
 
 export const Route = createFileRoute("/auth")({
   component: AuthPage,
   head: () => ({ meta: [{ title: "Ingresar — AgroSync" }] }),
 });
-
-// ─── Dev quick-access ─────────────────────────────────────────────────────────
-
-const DEV_USERS = [
-  { email: "agricultor@agrosync.demo", password: "AgroSync2026!", label: "Agricultor", icon: Sprout },
-  { email: "apicultor@agrosync.demo",  password: "AgroSync2026!", label: "Apicultor",  icon: Hexagon },
-  { email: "tecnico@agrosync.demo",    password: "AgroSync2026!", label: "Técnico",    icon: Wrench },
-  { email: "admin@agrosync.demo",      password: "AgroSync2026!", label: "Admin",      icon: ShieldCheck },
-] as const;
-
-// ─── Page ─────────────────────────────────────────────────────────────────────
 
 function AuthPage() {
   const { user } = useAuth();
@@ -52,11 +41,12 @@ function AuthPage() {
 
       <div className="flex items-center justify-center p-6 sm:p-12">
         <div className="w-full max-w-md space-y-4">
-          <DevPanel />
-
           <Card className="border-border/60 p-8">
-            <div className="lg:hidden mb-6">
+            <div className="mb-6 lg:hidden">
               <Link to="/"><Logo /></Link>
+            </div>
+            <div className="mb-6 rounded-xl border border-primary/15 bg-primary/5 px-4 py-3 text-sm text-muted-foreground">
+              Esta versión ya usa autenticación real con Supabase. Crea tu cuenta o ingresa con una existente.
             </div>
             <Tabs defaultValue="signin">
               <TabsList className="grid w-full grid-cols-2">
@@ -73,59 +63,6 @@ function AuthPage() {
   );
 }
 
-// ─── Dev panel ────────────────────────────────────────────────────────────────
-
-function DevPanel() {
-  const navigate = useNavigate();
-  const [active, setActive] = useState<string | null>(null);
-
-  const loginAs = (u: typeof DEV_USERS[number]) => {
-    setActive(u.label);
-    const { error } = authStore.signIn(u.email, u.password);
-    setActive(null);
-    if (error) { toast.error(error); return; }
-    toast.success(`Sesión iniciada como ${u.label}`);
-    navigate({ to: "/dashboard" });
-  };
-
-  return (
-    <Card className="border-dashed border-amber-400/60 bg-amber-50/50 dark:bg-amber-950/20 p-4">
-      <div className="mb-3 flex items-center gap-2">
-        <span className="rounded bg-amber-400/20 px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-widest text-amber-700 dark:text-amber-400">
-          DEMO
-        </span>
-        <span className="text-xs font-medium text-amber-800 dark:text-amber-300">
-          Acceso rápido por rol
-        </span>
-      </div>
-      <div className="grid grid-cols-2 gap-2">
-        {DEV_USERS.map(u => {
-          const Icon = u.icon;
-          return (
-            <button
-              key={u.label}
-              onClick={() => loginAs(u)}
-              disabled={active !== null}
-              className="flex items-center gap-2 rounded-lg border border-amber-300/60 bg-white/80 px-3 py-2.5 text-left text-sm font-medium transition-colors hover:bg-amber-50 disabled:opacity-50 dark:bg-white/5 dark:hover:bg-white/10"
-            >
-              {active === u.label
-                ? <Loader2 className="h-4 w-4 shrink-0 animate-spin text-amber-600" />
-                : <Icon className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
-              }
-              <span className="text-foreground">{u.label}</span>
-            </button>
-          );
-        })}
-      </div>
-      <p className="mt-3 text-[11px] text-amber-700/70 dark:text-amber-400/60">
-        Sin base de datos · datos en localStorage · funciona offline
-      </p>
-    </Card>
-  );
-}
-
-// ─── Sign-in ──────────────────────────────────────────────────────────────────
-
 function SignInForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -135,7 +72,7 @@ function SignInForm() {
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    const { error } = authStore.signIn(email, password);
+    const { error } = await authStore.signIn(email, password);
     setLoading(false);
     if (error) { toast.error(error); return; }
     toast.success("Bienvenido de vuelta");
@@ -159,8 +96,6 @@ function SignInForm() {
   );
 }
 
-// ─── Sign-up ──────────────────────────────────────────────────────────────────
-
 function SignUpForm() {
   const [nombre, setNombre] = useState("");
   const [email, setEmail] = useState("");
@@ -172,9 +107,13 @@ function SignUpForm() {
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    const { error } = authStore.signUp(email, password, nombre, tipo);
+    const { user, error } = await authStore.signUp(email, password, nombre, tipo);
     setLoading(false);
     if (error) { toast.error(error); return; }
+    if (!user) {
+      toast.success("Cuenta creada. Revisa tu correo para confirmar el acceso.");
+      return;
+    }
     toast.success("Cuenta creada");
     navigate({ to: "/dashboard" });
   };

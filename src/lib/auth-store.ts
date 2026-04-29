@@ -1,7 +1,5 @@
-/**
- * Auth local — reemplaza Supabase Auth para el demo.
- * Sesión persistida en localStorage. Cero dependencias externas.
- */
+import type { AuthChangeEvent, Session, User } from "@supabase/supabase-js";
+import { supabase } from "@/integrations/supabase/client";
 
 export interface AppUser {
   id: string;
@@ -9,77 +7,103 @@ export interface AppUser {
   user_metadata: { nombre: string; tipo_usuario: string };
 }
 
-const SESSION_KEY = "agrosync_session";
-const USERS_KEY = "agrosync_users";
-
-// Cuentas de prueba predefinidas — no requieren signup
-const DEV_ACCOUNTS = [
-  { id: "dev-agricultor", email: "agricultor@agrosync.demo", password: "AgroSync2026!", nombre: "Carlos Mendoza", tipo_usuario: "agricultor" },
-  { id: "dev-apicultor", email: "apicultor@agrosync.demo", password: "AgroSync2026!", nombre: "María Torres", tipo_usuario: "apicultor" },
-  { id: "dev-tecnico",   email: "tecnico@agrosync.demo",   password: "AgroSync2026!", nombre: "Andrés Ríos",   tipo_usuario: "tecnico" },
-  { id: "dev-admin",     email: "admin@agrosync.demo",     password: "AgroSync2026!", nombre: "Admin AgroSync", tipo_usuario: "admin" },
-];
-
-type Account = typeof DEV_ACCOUNTS[number];
-
-function loadRegistered(): Account[] {
-  try { return JSON.parse(localStorage.getItem(USERS_KEY) ?? "[]"); }
-  catch { return []; }
+function normalizeTipoUsuario(value: unknown): string {
+  if (typeof value !== "string" || value.length === 0) return "agricultor";
+  return value;
 }
 
-function allAccounts(): Account[] {
-  return [...DEV_ACCOUNTS, ...loadRegistered()];
+async function resolveProfile(userId: string) {
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("nombre, tipo_usuario")
+    .eq("id", userId)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return data;
 }
 
-function toUser(a: Account): AppUser {
-  return { id: a.id, email: a.email, user_metadata: { nombre: a.nombre, tipo_usuario: a.tipo_usuario } };
+async function toAppUser(user: User): Promise<AppUser> {
+  const profile = await resolveProfile(user.id).catch(() => null);
+  const nombre =
+    profile?.nombre ??
+    (typeof user.user_metadata?.nombre === "string" && user.user_metadata.nombre.length > 0
+      ? user.user_metadata.nombre
+      : user.email?.split("@")[0] ?? "Usuario");
+  const tipoUsuario = normalizeTipoUsuario(profile?.tipo_usuario ?? user.user_metadata?.tipo_usuario);
+
+  return {
+    id: user.id,
+    email: user.email ?? "",
+    user_metadata: {
+      nombre,
+      tipo_usuario: tipoUsuario,
+    },
+  };
 }
 
-function emit() {
-  window.dispatchEvent(new Event("agrosync_auth"));
+function toErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  return "Ocurrió un error inesperado.";
+}
+
+async function sessionToAppUser(session: Session | null): Promise<AppUser | null> {
+  const user = session?.user;
+  return user ? toAppUser(user) : null;
 }
 
 export const authStore = {
-  getUser(): AppUser | null {
-    try { return JSON.parse(localStorage.getItem(SESSION_KEY) ?? "null"); }
-    catch { return null; }
+  async getUser(): Promise<AppUser | null> {
+    const { data, error } = await supabase.auth.getSession();
+    if (error) throw new Error(error.message);
+    return sessionToAppUser(data.session);
   },
 
-  signIn(email: string, password: string): { user: AppUser | null; error: string | null } {
-    const acc = allAccounts().find(a => a.email === email && a.password === password);
-    if (!acc) return { user: null, error: "Credenciales inválidas" };
-    const user = toUser(acc);
-    localStorage.setItem(SESSION_KEY, JSON.stringify(user));
-    emit();
-    return { user, error: null };
+  onChange(callback: () => void) {
+    const { data } = supabase.auth.onAuthStateChange((_event: AuthChangeEvent) => {
+      callback();
+    });
+
+    return () => data.subscription.unsubscribe();
   },
 
-  signUp(
+  async signIn(email: string, password: string): Promise<{ user: AppUser | null; error: string | null }> {
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) return { user: null, error: error.message };
+      return { user: await sessionToAppUser(data.session), error: null };
+    } catch (error) {
+      return { user: null, error: toErrorMessage(error) };
+    }
+  },
+
+  async signUp(
     email: string,
     password: string,
     nombre: string,
     tipo_usuario: string,
-  ): { user: AppUser | null; error: string | null } {
-    if (allAccounts().find(a => a.email === email)) {
-      return { user: null, error: "Este correo ya está registrado" };
+  ): Promise<{ user: AppUser | null; error: string | null }> {
+    try {
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: { nombre, tipo_usuario },
+        },
+      });
+
+      if (error) return { user: null, error: error.message };
+      return { user: await sessionToAppUser(data.session), error: null };
+    } catch (error) {
+      return { user: null, error: toErrorMessage(error) };
     }
-    const acc: Account = {
-      id: crypto.randomUUID(),
-      email,
-      password,
-      nombre,
-      tipo_usuario,
-    };
-    const registered = loadRegistered();
-    localStorage.setItem(USERS_KEY, JSON.stringify([...registered, acc]));
-    const user = toUser(acc);
-    localStorage.setItem(SESSION_KEY, JSON.stringify(user));
-    emit();
-    return { user, error: null };
   },
 
-  signOut() {
-    localStorage.removeItem(SESSION_KEY);
-    emit();
+  async signOut(): Promise<void> {
+    const { error } = await supabase.auth.signOut();
+    if (error) throw new Error(error.message);
   },
 };

@@ -9,8 +9,8 @@ export function Navbar() {
   const { user } = useAuth();
   const navigate = useNavigate();
 
-  const signOut = () => {
-    authStore.signOut();
+  const signOut = async () => {
+    await authStore.signOut();
     navigate({ to: "/" });
   };
 

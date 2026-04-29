@@ -1,20 +1,5 @@
-/**
- * Store local — reemplaza Supabase DB para el demo.
- * Datos persistidos en localStorage. Cero dependencias externas.
- */
-
-function load<T>(key: string): T[] {
-  try { return JSON.parse(localStorage.getItem(key) ?? "[]"); }
-  catch { return []; }
-}
-
-function save<T>(key: string, data: T[]) {
-  localStorage.setItem(key, JSON.stringify(data));
-}
-
-const now = () => new Date().toISOString();
-
-// ─── Fincas ──────────────────────────────────────────────────────────────────
+import { supabase } from "@/integrations/supabase/client";
+import type { GeoJsonPolygon } from "@/lib/geo";
 
 export interface FincaRow {
   id: string;
@@ -24,24 +9,11 @@ export interface FincaRow {
   latitud: number;
   longitud: number;
   organica: boolean;
-  area_hectareas?: number;
+  area_hectareas?: number | null;
+  poligono_geojson?: GeoJsonPolygon | null;
   certificaciones: string[];
   created_at: string;
 }
-
-export function getFincas(userId: string): FincaRow[] {
-  return load<FincaRow>("agrosync_fincas")
-    .filter(f => f.user_id === userId)
-    .sort((a, b) => b.created_at.localeCompare(a.created_at));
-}
-
-export function createFinca(data: Omit<FincaRow, "id" | "created_at">): FincaRow {
-  const row: FincaRow = { ...data, id: crypto.randomUUID(), created_at: now() };
-  save("agrosync_fincas", [...load("agrosync_fincas"), row]);
-  return row;
-}
-
-// ─── Apiarios ─────────────────────────────────────────────────────────────────
 
 export interface ApiarioRow {
   id: string;
@@ -51,25 +23,9 @@ export interface ApiarioRow {
   longitud: number;
   num_colmenas: number;
   radio_proteccion_m: number;
-  contacto_telefono?: string;
+  contacto_telefono?: string | null;
   created_at: string;
 }
-
-export function getApiarios(): ApiarioRow[] {
-  return load<ApiarioRow>("agrosync_apiarios");
-}
-
-export function createApiario(data: Omit<ApiarioRow, "id" | "created_at">): ApiarioRow {
-  const row: ApiarioRow = { ...data, id: crypto.randomUUID(), created_at: now() };
-  save("agrosync_apiarios", [...load("agrosync_apiarios"), row]);
-  return row;
-}
-
-export function deleteApiario(id: string) {
-  save("agrosync_apiarios", load<ApiarioRow>("agrosync_apiarios").filter(a => a.id !== id));
-}
-
-// ─── Alertas ─────────────────────────────────────────────────────────────────
 
 export interface AlertaRow {
   id: string;
@@ -81,14 +37,76 @@ export interface AlertaRow {
   created_at: string;
 }
 
-export function getAlertas(userId: string): AlertaRow[] {
-  return load<AlertaRow>("agrosync_alertas")
-    .filter(a => a.destinatario_id === userId)
-    .sort((a, b) => b.created_at.localeCompare(a.created_at));
+function requireData<T>(data: T | null, message: string): T {
+  if (data == null) throw new Error(message);
+  return data;
 }
 
-export function createAlertas(rows: Omit<AlertaRow, "id" | "leida" | "created_at">[]) {
-  const list = load<AlertaRow>("agrosync_alertas");
-  rows.forEach(r => list.push({ ...r, id: crypto.randomUUID(), leida: false, created_at: now() }));
-  save("agrosync_alertas", list);
+export async function getFincas(userId: string): Promise<FincaRow[]> {
+  const { data, error } = await supabase
+    .from("fincas")
+    .select("*")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false });
+
+  if (error) throw new Error(error.message);
+  return (data ?? []) as FincaRow[];
+}
+
+export async function createFinca(data: Omit<FincaRow, "id" | "created_at">): Promise<FincaRow> {
+  const { data: inserted, error } = await supabase
+    .from("fincas")
+    .insert({
+      ...data,
+      certificaciones: data.certificaciones ?? [],
+    })
+    .select("*")
+    .single();
+
+  if (error) throw new Error(error.message);
+  return requireData(inserted as FincaRow | null, "No se pudo crear la finca.");
+}
+
+export async function getApiarios(): Promise<ApiarioRow[]> {
+  const { data, error } = await supabase
+    .from("apiarios")
+    .select("*")
+    .order("created_at", { ascending: false });
+
+  if (error) throw new Error(error.message);
+  return (data ?? []) as ApiarioRow[];
+}
+
+export async function createApiario(data: Omit<ApiarioRow, "id" | "created_at">): Promise<ApiarioRow> {
+  const { data: inserted, error } = await supabase
+    .from("apiarios")
+    .insert(data)
+    .select("*")
+    .single();
+
+  if (error) throw new Error(error.message);
+  return requireData(inserted as ApiarioRow | null, "No se pudo crear el apiario.");
+}
+
+export async function deleteApiario(id: string): Promise<void> {
+  const { error } = await supabase.from("apiarios").delete().eq("id", id);
+  if (error) throw new Error(error.message);
+}
+
+export async function getAlertas(userId: string): Promise<AlertaRow[]> {
+  const { data, error } = await supabase
+    .from("alertas")
+    .select("*")
+    .eq("destinatario_id", userId)
+    .order("created_at", { ascending: false });
+
+  if (error) throw new Error(error.message);
+  return (data ?? []) as AlertaRow[];
+}
+
+export async function createAlertas(
+  rows: Omit<AlertaRow, "id" | "leida" | "created_at">[],
+): Promise<void> {
+  const { error } = await supabase.from("alertas").insert(rows);
+  if (error) throw new Error(error.message);
 }

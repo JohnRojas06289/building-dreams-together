@@ -161,6 +161,7 @@ export type Database = {
           longitud: number
           nombre: string
           organica: boolean | null
+          poligono_geojson: Json | null
           user_id: string
         }
         Insert: {
@@ -173,6 +174,7 @@ export type Database = {
           longitud: number
           nombre: string
           organica?: boolean | null
+          poligono_geojson?: Json | null
           user_id: string
         }
         Update: {
@@ -185,6 +187,7 @@ export type Database = {
           longitud?: number
           nombre?: string
           organica?: boolean | null
+          poligono_geojson?: Json | null
           user_id?: string
         }
         Relationships: []
