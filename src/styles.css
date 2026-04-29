@@ -147,5 +147,5 @@
 }
 
 /* Leaflet base — neutralize default styles to fit theme */
-.leaflet-container { background: oklch(0.92 0.02 130); border-radius: var(--radius-lg); font-family: inherit; }
+.leaflet-container { background: oklch(0.92 0.02 130); border-radius: var(--radius-lg); font-family: inherit; isolation: isolate; }
 .leaflet-popup-content-wrapper { border-radius: var(--radius-md); box-shadow: var(--shadow-elegant); }

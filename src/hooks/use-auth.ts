@@ -1,26 +1,17 @@
 import { useEffect, useState } from "react";
-import type { Session, User } from "@supabase/supabase-js";
-import { supabase } from "@/integrations/supabase/client";
+import { authStore, type AppUser } from "@/lib/auth-store";
 
 export function useAuth() {
-  const [session, setSession] = useState<Session | null>(null);
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<AppUser | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // First subscribe, then check existing session (avoid race)
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, s) => {
-      setSession(s);
-      setUser(s?.user ?? null);
-      setLoading(false);
-    });
-    supabase.auth.getSession().then(({ data: { session: s } }) => {
-      setSession(s);
-      setUser(s?.user ?? null);
-      setLoading(false);
-    });
-    return () => sub.subscription.unsubscribe();
+    setUser(authStore.getUser());
+    setLoading(false);
+    const sync = () => setUser(authStore.getUser());
+    window.addEventListener("agrosync_auth", sync);
+    return () => window.removeEventListener("agrosync_auth", sync);
   }, []);
 
-  return { session, user, loading };
+  return { user, loading };
 }

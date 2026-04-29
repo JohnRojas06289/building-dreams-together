@@ -2,15 +2,15 @@ import { Link, useNavigate } from "@tanstack/react-router";
 import { Logo } from "./Logo";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/use-auth";
-import { supabase } from "@/integrations/supabase/client";
+import { authStore } from "@/lib/auth-store";
 import { LogOut } from "lucide-react";
 
 export function Navbar() {
   const { user } = useAuth();
   const navigate = useNavigate();
 
-  const signOut = async () => {
-    await supabase.auth.signOut();
+  const signOut = () => {
+    authStore.signOut();
     navigate({ to: "/" });
   };
 
@@ -43,6 +43,15 @@ export function Navbar() {
           >
             Impacto
           </Link>
+          {user && (
+            <Link
+              to="/agente"
+              className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+              activeProps={{ className: "text-foreground" }}
+            >
+              Agente IA
+            </Link>
+          )}
         </nav>
         <div className="flex items-center gap-2">
           {user ? (

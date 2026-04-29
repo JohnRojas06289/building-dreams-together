@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { MapContainer, TileLayer, Marker, Circle, Popup, useMap } from "react-leaflet";
 import L from "leaflet";
+import "leaflet/dist/leaflet.css";
 import type { Apiary, Finca } from "@/lib/agrosync";
 
 // Fix default marker icons (Vite/SSR safe)
@@ -24,12 +25,13 @@ function Recenter({ lat, lng }: { lat: number; lng: number }) {
 }
 
 export function RiskMap({
-  fincas, apiarios, selectedFinca, driftRadius, affectedIds,
+  fincas, apiarios, selectedFinca, driftRadius, uncertaintyRadius = 0, affectedIds,
 }: {
   fincas: Finca[];
   apiarios: Apiary[];
   selectedFinca: Finca | null;
   driftRadius: number;
+  uncertaintyRadius?: number;
   affectedIds: Set<string>;
 }) {
   const center: [number, number] = selectedFinca
@@ -46,11 +48,33 @@ export function RiskMap({
       />
       {selectedFinca && <Recenter lat={selectedFinca.latitud} lng={selectedFinca.longitud} />}
 
+      {/* Uncertainty band (±) — outer ring, dashed */}
+      {selectedFinca && uncertaintyRadius > 0 && (
+        <Circle
+          center={[selectedFinca.latitud, selectedFinca.longitud]}
+          radius={driftRadius + uncertaintyRadius}
+          pathOptions={{
+            color: "oklch(0.55 0.22 28)",
+            fillColor: "transparent",
+            fillOpacity: 0,
+            weight: 1,
+            dashArray: "2 6",
+            opacity: 0.4,
+          }}
+        />
+      )}
+      {/* Drift radius — main circle */}
       {selectedFinca && (
         <Circle
           center={[selectedFinca.latitud, selectedFinca.longitud]}
           radius={driftRadius}
-          pathOptions={{ color: "oklch(0.55 0.22 28)", fillColor: "oklch(0.55 0.22 28)", fillOpacity: 0.12, weight: 1.5, dashArray: "4 4" }}
+          pathOptions={{
+            color: "oklch(0.55 0.22 28)",
+            fillColor: "oklch(0.55 0.22 28)",
+            fillOpacity: 0.12,
+            weight: 1.5,
+            dashArray: "4 4",
+          }}
         />
       )}
 
