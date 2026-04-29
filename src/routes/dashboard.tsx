@@ -30,6 +30,7 @@ import {
 } from "@/lib/store";
 import { fetchAllClimate } from "@/lib/climate-api";
 import { exportCertificatePdf } from "@/lib/pdf-export";
+import { supabase } from "@/integrations/supabase/client";
 import { FincaDrawingField } from "@/components/FincaDrawingField";
 import {
   approximateAreaHectares,
@@ -456,29 +457,48 @@ function SmsPreviewDialog({
   const [open, setOpen] = useState(false);
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
+  const [smsResult, setSmsResult] = useState<{ sent: number; sinTelefono: number } | null>(null);
 
   const smsText = `[AgroSync] Alerta preventiva de deriva — Finca: "${finca.nombre}" (${finca.latitud.toFixed(4)}, ${finca.longitud.toFixed(4)}). Viento: ${wind} km/h | Pendiente: ${slope}°. Ventana segura: ${window_.horaInicio}. Apiarios afectados: ${affected.length}. Ref: ICA Res. 740/2023, Art. 23.`;
 
-  const handleSend = () => {
-    setSending(true);
-    const rows = affected.map(a => ({
-      destinatario_id: a.user_id,
-      tipo: "deriva",
-      severidad: "alta",
-      mensaje: smsText,
-    }));
+  const conTelefono = affected.filter(a => a.contacto_telefono);
 
-    void createAlertas(rows)
-      .then(() => {
-        setSent(true);
-        toast.success(`Alertas enviadas a ${affected.length} apicultor(es)`);
-        onSent();
-        setTimeout(() => { setOpen(false); setSent(false); }, 1800);
-      })
-      .catch((error: unknown) => {
-        toast.error(error instanceof Error ? error.message : "No se pudieron enviar las alertas");
-      })
-      .finally(() => setSending(false));
+  const handleSend = async () => {
+    setSending(true);
+    try {
+      await createAlertas(affected.map(a => ({
+        destinatario_id: a.user_id,
+        tipo: "deriva",
+        severidad: "alta",
+        mensaje: smsText,
+      })));
+
+      if (conTelefono.length > 0) {
+        const { data, error } = await supabase.functions.invoke("send-sms", {
+          body: {
+            destinatarios: conTelefono.map(a => ({ telefono: a.contacto_telefono!, nombre: a.nombre })),
+            mensaje: smsText,
+          },
+        });
+        if (error) {
+          toast.warning("Alertas guardadas. SMS no enviado: " + error.message);
+        } else {
+          const r = data as { sent: number; sinTelefono: number };
+          setSmsResult(r);
+          toast.success(`${r.sent} SMS enviado${r.sent !== 1 ? "s" : ""} via Twilio`);
+        }
+      } else {
+        toast.success(`Alertas guardadas · ${affected.length} registro(s) en base de datos`);
+      }
+
+      setSent(true);
+      onSent();
+      setTimeout(() => { setOpen(false); setSent(false); setSmsResult(null); }, 2000);
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : "No se pudieron enviar las alertas");
+    } finally {
+      setSending(false);
+    }
   };
 
   return (
@@ -491,9 +511,9 @@ function SmsPreviewDialog({
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Previsualización de alerta SMS</DialogTitle>
+          <DialogTitle>Alertas preventivas de deriva</DialogTitle>
           <DialogDescription>
-            Verifica el mensaje antes de enviarlo a los apicultores afectados.
+            Guarda el registro en base de datos y envía SMS a los apicultores con teléfono registrado.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
@@ -505,7 +525,13 @@ function SmsPreviewDialog({
               {affected.map(a => (
                 <div key={a.id} className="flex items-center justify-between rounded-lg border border-border/60 bg-muted/40 px-3 py-2 text-sm">
                   <span className="font-medium">{a.nombre}</span>
-                  <span className="text-xs text-muted-foreground">{a.num_colmenas} colmenas</span>
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <span>{a.num_colmenas} colmenas</span>
+                    {a.contacto_telefono
+                      ? <Badge variant="secondary" className="text-[10px]">SMS ✓</Badge>
+                      : <Badge variant="outline" className="text-[10px]">Sin tel.</Badge>
+                    }
+                  </div>
                 </div>
               ))}
             </div>
@@ -518,14 +544,26 @@ function SmsPreviewDialog({
               {smsText}
             </div>
           </div>
+          {conTelefono.length === 0 && (
+            <div className="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/5 px-3 py-2.5 text-xs text-muted-foreground">
+              <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-warning" />
+              <span>Ningún apiario afectado tiene teléfono registrado. El registro quedará en base de datos pero no se enviará SMS.</span>
+            </div>
+          )}
           <div className="flex items-start gap-2 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2.5 text-xs text-muted-foreground">
             <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
-            <span>Registro inmutable. Fundamento: ICA Res. 740/2023, Art. 23.</span>
+            <span>Registro inmutable en Supabase. Fundamento: ICA Res. 740/2023, Art. 23.</span>
           </div>
+          {smsResult && (
+            <div className="rounded-lg border border-success/30 bg-success/10 px-3 py-2.5 text-xs text-success">
+              ✓ {smsResult.sent} SMS enviado{smsResult.sent !== 1 ? "s" : ""} via Twilio
+              {smsResult.sinTelefono > 0 && ` · ${smsResult.sinTelefono} sin teléfono`}
+            </div>
+          )}
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => setOpen(false)}>Cancelar</Button>
-          <Button onClick={handleSend} disabled={sending || sent}>
+          <Button onClick={() => void handleSend()} disabled={sending || sent}>
             {sending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             {sent ? "Enviado ✓" : `Confirmar (${affected.length})`}
           </Button>
@@ -668,7 +706,7 @@ function NewFincaDialog({ userId, onCreated }: { userId: string; onCreated: () =
 
 function NewApiarioDialog({ userId, onCreated }: { userId: string; onCreated: () => void }) {
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({ nombre: "", latitud: "5.0689", longitud: "-75.5174", num_colmenas: "10", radio_proteccion_m: "3000" });
+  const [form, setForm] = useState({ nombre: "", latitud: "5.0689", longitud: "-75.5174", num_colmenas: "10", radio_proteccion_m: "3000", contacto_telefono: "" });
   const [loading, setLoading] = useState(false);
 
   const submit = (e: React.FormEvent) => {
@@ -696,6 +734,7 @@ function NewApiarioDialog({ userId, onCreated }: { userId: string; onCreated: ()
       longitud,
       num_colmenas: numColmenas,
       radio_proteccion_m: radioProteccion,
+      contacto_telefono: form.contacto_telefono || null,
     })
       .then(() => {
         toast.success("Apiario registrado en ColmenaSegura");
@@ -727,6 +766,9 @@ function NewApiarioDialog({ userId, onCreated }: { userId: string; onCreated: ()
             <Field label="Colmenas"><Input type="number" required value={form.num_colmenas} onChange={e => setForm({ ...form, num_colmenas: e.target.value })} /></Field>
             <Field label="Radio (m)"><Input type="number" required value={form.radio_proteccion_m} onChange={e => setForm({ ...form, radio_proteccion_m: e.target.value })} /></Field>
           </div>
+          <Field label="Teléfono para alertas SMS (E.164)">
+            <Input type="tel" placeholder="+573001234567" value={form.contacto_telefono} onChange={e => setForm({ ...form, contacto_telefono: e.target.value })} />
+          </Field>
           <DialogFooter>
             <Button type="submit" disabled={loading}>
               {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Registrar

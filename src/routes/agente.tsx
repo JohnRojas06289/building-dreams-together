@@ -378,6 +378,11 @@ function AgentePage() {
           </div>
         </div>
 
+        {/* RAG disclaimer */}
+        <div className="rounded-lg border border-amber-300/50 bg-amber-50/60 px-4 py-3 text-xs text-amber-800 dark:bg-amber-950/20 dark:text-amber-300">
+          <strong>Modo demo:</strong> el agente usa un corpus legal embebido en el prompt (ICA Res. 740/2023, 1806/2004, 3759/2003 · Ley 1968/2019 · LMR Codex/UE/USA · SISPAP · DIAN · MADS). En producción se reemplaza por Vertex AI Vector Search sobre el catálogo completo de resoluciones actualizado en tiempo real.
+        </div>
+
         {/* Chat + Alerts sidebar */}
         <div className="flex flex-1 flex-col gap-4 overflow-hidden lg:flex-row">
         <Card className="flex flex-1 flex-col border-border/60 overflow-hidden" style={{ minHeight: "520px" }}>
