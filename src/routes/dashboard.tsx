@@ -466,19 +466,26 @@ function SmsPreviewDialog({
   const handleSend = async () => {
     setSending(true);
     try {
-      await createAlertas(affected.map(a => ({
-        destinatario_id: a.user_id,
+      // 1 alerta por destinatario único (no por apiario)
+      const uniqueUserIds = [...new Set(affected.map(a => a.user_id))];
+      await createAlertas(uniqueUserIds.map(uid => ({
+        destinatario_id: uid,
         tipo: "deriva",
         severidad: "alta",
         mensaje: smsText,
       })));
 
-      if (conTelefono.length > 0) {
+      // 1 SMS por teléfono único
+      const phoneSeen = new Set<string>();
+      const destinatariosUnicos = conTelefono.reduce<{ telefono: string; nombre: string }[]>((acc, a) => {
+        const tel = a.contacto_telefono!;
+        if (!phoneSeen.has(tel)) { phoneSeen.add(tel); acc.push({ telefono: tel, nombre: a.nombre }); }
+        return acc;
+      }, []);
+
+      if (destinatariosUnicos.length > 0) {
         const { data, error } = await supabase.functions.invoke("send-sms", {
-          body: {
-            destinatarios: conTelefono.map(a => ({ telefono: a.contacto_telefono!, nombre: a.nombre })),
-            mensaje: smsText,
-          },
+          body: { destinatarios: destinatariosUnicos, mensaje: smsText },
         });
         if (error) {
           toast.warning("Alertas guardadas. SMS no enviado: " + error.message);
@@ -488,7 +495,7 @@ function SmsPreviewDialog({
           toast.success(`${r.sent} SMS enviado${r.sent !== 1 ? "s" : ""} via Twilio`);
         }
       } else {
-        toast.success(`Alertas guardadas · ${affected.length} registro(s) en base de datos`);
+        toast.success(`Alertas guardadas · ${uniqueUserIds.length} destinatario(s) en base de datos`);
       }
 
       setSent(true);
@@ -519,7 +526,7 @@ function SmsPreviewDialog({
         <div className="space-y-4">
           <div>
             <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              Destinatarios ({affected.length} apiarios)
+              Destinatarios · {new Set(affected.map(a => a.user_id)).size} usuarios · {affected.length} apiarios
             </p>
             <div className="space-y-1.5">
               {affected.map(a => (
@@ -676,9 +683,9 @@ function NewFincaDialog({ userId, onCreated }: { userId: string; onCreated: () =
       <DialogTrigger asChild>
         <Button variant="outline"><Plus className="mr-1 h-4 w-4" />Finca</Button>
       </DialogTrigger>
-      <DialogContent className="max-w-3xl" aria-describedby={undefined}>
+      <DialogContent className="max-w-3xl max-h-[90vh] flex flex-col" aria-describedby={undefined}>
         <DialogHeader><DialogTitle>Nueva finca</DialogTitle></DialogHeader>
-        <form onSubmit={submit} className="space-y-4">
+        <form onSubmit={submit} className="space-y-4 overflow-y-auto flex-1 pr-1">
           <Field label="Nombre"><Input required value={form.nombre} onChange={e => setForm({ ...form, nombre: e.target.value })} /></Field>
           <Field label="Cultivo"><Input required value={form.cultivo} onChange={e => setForm({ ...form, cultivo: e.target.value })} /></Field>
           <FincaDrawingField initialPath={polygonPath} onChange={setPolygonPath} />

@@ -10,7 +10,7 @@ import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@
 import { authStore } from "@/lib/auth-store";
 import { useAuth } from "@/hooks/use-auth";
 import { toast } from "sonner";
-import { Loader2 } from "lucide-react";
+import { Eye, EyeOff, Loader2 } from "lucide-react";
 
 export const Route = createFileRoute("/auth")({
   component: AuthPage,
@@ -74,6 +74,7 @@ const DEBUG_PASSWORD = "AgroSync2026!";
 function SignInForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
@@ -121,7 +122,12 @@ function SignInForm() {
         </div>
         <div className="space-y-2">
           <Label htmlFor="pw-in">Contraseña</Label>
-          <Input id="pw-in" type="password" value={password} onChange={e => setPassword(e.target.value)} required minLength={6} />
+          <div className="relative">
+            <Input id="pw-in" type={showPassword ? "text" : "password"} value={password} onChange={e => setPassword(e.target.value)} required minLength={6} className="pr-10" />
+            <button type="button" onClick={() => setShowPassword(v => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+              {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+            </button>
+          </div>
         </div>
         <Button type="submit" className="w-full" disabled={loading}>
           {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Ingresar
@@ -135,6 +141,7 @@ function SignUpForm() {
   const [nombre, setNombre] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [tipo, setTipo] = useState("agricultor");
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
@@ -176,7 +183,12 @@ function SignUpForm() {
       </div>
       <div className="space-y-2">
         <Label htmlFor="pw-up">Contraseña</Label>
-        <Input id="pw-up" type="password" value={password} onChange={e => setPassword(e.target.value)} required minLength={6} />
+        <div className="relative">
+          <Input id="pw-up" type={showPassword ? "text" : "password"} value={password} onChange={e => setPassword(e.target.value)} required minLength={6} className="pr-10" />
+          <button type="button" onClick={() => setShowPassword(v => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+            {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+          </button>
+        </div>
       </div>
       <Button type="submit" className="w-full" disabled={loading}>
         {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Crear cuenta
