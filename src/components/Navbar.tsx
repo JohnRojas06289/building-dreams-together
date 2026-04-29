@@ -3,7 +3,7 @@ import { Logo } from "./Logo";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/use-auth";
 import { authStore } from "@/lib/auth-store";
-import { LogOut } from "lucide-react";
+import { LogOut, UserCircle } from "lucide-react";
 
 export function Navbar() {
   const { user } = useAuth();
@@ -58,6 +58,9 @@ export function Navbar() {
             <>
               <Button asChild variant="ghost" size="sm">
                 <Link to="/dashboard">Dashboard</Link>
+              </Button>
+              <Button asChild variant="ghost" size="icon" aria-label="Mi perfil">
+                <Link to="/perfil"><UserCircle className="h-4 w-4" /></Link>
               </Button>
               <Button onClick={signOut} variant="ghost" size="icon" aria-label="Cerrar sesión">
                 <LogOut className="h-4 w-4" />
