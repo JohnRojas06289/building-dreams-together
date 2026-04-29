@@ -5,8 +5,8 @@ import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { supabase } from "@/integrations/supabase/client";
-import { Loader2, Send, Bot, User, ShieldCheck, AlertTriangle } from "lucide-react";
+import { Loader2, Send, Bot, User, ShieldCheck, AlertTriangle, Bell, Radio } from "lucide-react";
+import { getAlertas, type AlertaRow } from "@/lib/store";
 
 export const Route = createFileRoute("/agente")({
   component: AgentePage,
@@ -221,25 +221,39 @@ const EXAMPLE_QUESTIONS = [
   "¿Cuáles son los LMR de clorpirifós para exportación a la UE?",
 ];
 
-// ─── Gemini API call ─────────────────────────────────────────────────────────
+// ─── Gemini API call (direct — VITE_GEMINI_API_KEY) ─────────────────────────
 
 async function callGemini(messages: Message[]): Promise<string> {
-  const { data, error } = await supabase.functions.invoke("gemini-proxy", {
-    body: {
-      messages,
-      systemPrompt: SYSTEM_PROMPT,
+  const apiKey = import.meta.env.VITE_GEMINI_API_KEY as string | undefined;
+  if (!apiKey) throw new Error("Falta VITE_GEMINI_API_KEY en el .env");
+
+  const contents = messages.map((m) => ({
+    role: m.role === "assistant" ? "model" : "user",
+    parts: [{ text: m.content }],
+  }));
+
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
+        contents,
+        generationConfig: { temperature: 0.2, maxOutputTokens: 1024 },
+      }),
     },
-  });
+  );
 
-  if (error) {
-    throw new Error(error.message);
+  const data = await res.json();
+
+  if (!res.ok) {
+    throw new Error(data?.error?.message ?? `Gemini ${res.status}`);
   }
 
-  if (!data?.text) {
-    throw new Error(data?.error ?? "Sin respuesta del proxy Gemini.");
-  }
-
-  return data.text as string;
+  const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+  if (!text) throw new Error("Sin respuesta del modelo.");
+  return text as string;
 }
 
 // ─── Component ───────────────────────────────────────────────────────────────
@@ -285,7 +299,7 @@ function MessageBubble({ msg }: { msg: Message }) {
   );
 }
 
-export function AgentePage() {
+function AgentePage() {
   const { user, loading } = useAuth();
   const navigate = useNavigate();
   const [messages, setMessages] = useState<Message[]>([
@@ -364,7 +378,8 @@ export function AgentePage() {
           </div>
         </div>
 
-        {/* Chat area */}
+        {/* Chat + Alerts sidebar */}
+        <div className="flex flex-1 flex-col gap-4 overflow-hidden lg:flex-row">
         <Card className="flex flex-1 flex-col border-border/60 overflow-hidden" style={{ minHeight: "520px" }}>
           {/* Messages */}
           <div className="flex-1 overflow-y-auto p-6 space-y-4">
@@ -443,7 +458,80 @@ export function AgentePage() {
             </p>
           </div>
         </Card>
+          <AlertLogSidebar userId={user.id} />
+        </div>
       </main>
     </div>
+  );
+}
+
+// ─── Alert log sidebar ────────────────────────────────────────────────────────
+
+const SIM_LOGS = [
+  { id: "s1", time: "Ahora mismo",  text: "[Simulación] SMS enviado a vecinos y apicultores de ColmenaSegura — 3 apiarios notificados", level: "primary" as const },
+  { id: "s2", time: "hace 3 min",   text: "[Simulación] Nodo N-03 Sur: VOC 0.82 ppb — umbral de alerta superado", level: "warn" as const },
+  { id: "s3", time: "hace 8 min",   text: "[Simulación] Pluma gaussiana calculada — radio máximo 1.24 km · clase Pasquill D", level: "info" as const },
+  { id: "s4", time: "hace 15 min",  text: "[Simulación] Clima NASA POWER cargado · viento 12 km/h · pendiente 18°", level: "info" as const },
+];
+
+function AlertLogSidebar({ userId }: { userId: string }) {
+  const [alerts, setAlerts] = useState<AlertaRow[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let mounted = true;
+    void getAlertas(userId)
+      .then(rows => { if (mounted) setAlerts(rows); })
+      .catch(() => {})
+      .finally(() => { if (mounted) setLoading(false); });
+    return () => { mounted = false; };
+  }, [userId]);
+
+  return (
+    <Card className="flex shrink-0 flex-col border-border/60 lg:w-80" style={{ minHeight: "200px", maxHeight: "680px" }}>
+      <div className="shrink-0 border-b border-border/40 p-4">
+        <div className="flex items-center gap-2">
+          <Bell className="h-4 w-4 text-primary" />
+          <span className="text-sm font-semibold">Centro de Alertas</span>
+          <Radio className="ml-auto h-3.5 w-3.5 animate-pulse text-primary" />
+        </div>
+        <p className="mt-0.5 text-xs text-muted-foreground">Registro de eventos del sistema</p>
+      </div>
+
+      <div className="flex-1 space-y-2 overflow-y-auto p-3 text-xs">
+        {SIM_LOGS.map(log => (
+          <div
+            key={log.id}
+            className={`rounded-lg border px-3 py-2 leading-relaxed ${
+              log.level === "primary" ? "border-primary/25 bg-primary/5" :
+              log.level === "warn"    ? "border-amber-300/40 bg-amber-50/40" :
+                                       "border-border/40 bg-muted/30"
+            }`}
+          >
+            <div className="mb-0.5 text-muted-foreground">{log.time}</div>
+            <div>{log.text}</div>
+          </div>
+        ))}
+
+        {!loading && alerts.length === 0 && (
+          <p className="py-4 text-center text-muted-foreground">Sin alertas en base de datos.</p>
+        )}
+        {loading && <p className="py-2 text-center text-muted-foreground">Cargando...</p>}
+
+        {alerts.map(a => (
+          <div
+            key={a.id}
+            className={`rounded-lg border px-3 py-2 leading-relaxed ${
+              a.severidad === "alta" ? "border-destructive/30 bg-destructive/5" : "border-border/40 bg-muted/30"
+            }`}
+          >
+            <div className="mb-0.5 text-muted-foreground">
+              {new Date(a.created_at).toLocaleString("es-CO", { hour: "2-digit", minute: "2-digit" })}
+            </div>
+            <div>{a.mensaje}</div>
+          </div>
+        ))}
+      </div>
+    </Card>
   );
 }

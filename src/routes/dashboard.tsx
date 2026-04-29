@@ -18,7 +18,7 @@ import { toast } from "sonner";
 import {
   Loader2, Plus, Wind, Droplets, Sprout, Hexagon, Trash2,
   ShieldCheck, MoveVertical, Bot, MessageSquare, AlertTriangle,
-  Satellite, FileDown, Compass, Thermometer, Cloud,
+  Satellite, FileDown, Compass, Thermometer, Cloud, Radio, Cpu,
 } from "lucide-react";
 import {
   assessRisk, driftRadius, driftUncertainty, optimalWindow, riskBg,
@@ -187,6 +187,13 @@ function Dashboard() {
             </p>
           </Card>
         )}
+
+        {/* KPI Overview */}
+        <KpiOverview
+          riskLevel={assessment?.level ?? null}
+          totalApiarios={apiarios.length}
+          affectedApiarios={assessment?.affected.length ?? 0}
+        />
 
         <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
           {/* Map */}
@@ -370,6 +377,7 @@ function Dashboard() {
             <TabsTrigger value="fincas">Mis fincas ({fincas.length})</TabsTrigger>
             <TabsTrigger value="apiarios">ColmenaSegura ({apiarios.length})</TabsTrigger>
             <TabsTrigger value="alertas">Alertas</TabsTrigger>
+            <TabsTrigger value="nodos">Nodos IoT (4)</TabsTrigger>
           </TabsList>
 
           <TabsContent value="fincas" className="mt-4">
@@ -423,6 +431,9 @@ function Dashboard() {
 
           <TabsContent value="alertas" className="mt-4">
             <AlertasList userId={user.id} reloadKey={alertsReloadKey} />
+          </TabsContent>
+          <TabsContent value="nodos" className="mt-4">
+            <NodesPanel />
           </TabsContent>
         </Tabs>
       </main>
@@ -627,7 +638,7 @@ function NewFincaDialog({ userId, onCreated }: { userId: string; onCreated: () =
       <DialogTrigger asChild>
         <Button variant="outline"><Plus className="mr-1 h-4 w-4" />Finca</Button>
       </DialogTrigger>
-      <DialogContent className="max-w-3xl">
+      <DialogContent className="max-w-3xl" aria-describedby={undefined}>
         <DialogHeader><DialogTitle>Nueva finca</DialogTitle></DialogHeader>
         <form onSubmit={submit} className="space-y-4">
           <Field label="Nombre"><Input required value={form.nombre} onChange={e => setForm({ ...form, nombre: e.target.value })} /></Field>
@@ -704,7 +715,7 @@ function NewApiarioDialog({ userId, onCreated }: { userId: string; onCreated: ()
           <Hexagon className="mr-1 h-4 w-4" />Apiario
         </Button>
       </DialogTrigger>
-      <DialogContent>
+      <DialogContent aria-describedby={undefined}>
         <DialogHeader><DialogTitle>Registrar apiario · ColmenaSegura</DialogTitle></DialogHeader>
         <form onSubmit={submit} className="space-y-4">
           <Field label="Nombre"><Input required value={form.nombre} onChange={e => setForm({ ...form, nombre: e.target.value })} /></Field>
@@ -793,6 +804,267 @@ function AlertasList({ userId, reloadKey }: { userId: string; reloadKey: number 
           </div>
         </Card>
       ))}
+    </div>
+  );
+}
+
+// ─── KPI Overview ─────────────────────────────────────────────────────────────
+
+function KpiOverview({
+  riskLevel,
+  totalApiarios,
+  affectedApiarios,
+}: {
+  riskLevel: "bajo" | "medio" | "alto" | "critico" | null;
+  totalApiarios: number;
+  affectedApiarios: number;
+}) {
+  const riskReduction =
+    riskLevel === "critico" ? 10 :
+    riskLevel === "alto"    ? 20 :
+    riskLevel === "medio"   ? 55 : 85;
+  const apiariosPct =
+    totalApiarios > 0
+      ? Math.round(((totalApiarios - affectedApiarios) / totalApiarios) * 100)
+      : 100;
+
+  return (
+    <div className="grid gap-4 sm:grid-cols-3">
+      <KpiDonut
+        value={riskReduction}
+        label="Reducción de riesgo"
+        sublabel="Contaminación cruzada por deriva"
+        colorClass={riskReduction > 60 ? "text-emerald-500" : riskReduction > 30 ? "text-amber-500" : "text-destructive"}
+      />
+      <KpiDonut
+        value={apiariosPct}
+        label="Apiarios protegidos"
+        sublabel={`${totalApiarios - affectedApiarios} de ${totalApiarios} en ColmenaSegura`}
+        colorClass={apiariosPct > 80 ? "text-emerald-500" : apiariosPct > 50 ? "text-amber-500" : "text-destructive"}
+      />
+      <KpiDonut
+        value={80}
+        label="Trámites optimizados"
+        sublabel="Tiempo ICA · SISPAP · DIAN"
+        colorClass="text-violet-500"
+      />
+    </div>
+  );
+}
+
+function KpiDonut({
+  value,
+  label,
+  sublabel,
+  colorClass,
+}: {
+  value: number;
+  label: string;
+  sublabel: string;
+  colorClass: string;
+}) {
+  const r = 38;
+  const circ = 2 * Math.PI * r;
+  const offset = circ * (1 - value / 100);
+
+  return (
+    <Card className="border-border/60 p-5">
+      <div className="flex items-center gap-4">
+        <div className="relative h-20 w-20 shrink-0">
+          <svg viewBox="0 0 100 100" className="-rotate-90 h-20 w-20">
+            <circle cx="50" cy="50" r={r} fill="none" strokeWidth="10" className="stroke-muted" />
+            <circle
+              cx="50" cy="50" r={r} fill="none" strokeWidth="10"
+              strokeLinecap="round"
+              className={colorClass}
+              style={{
+                stroke: "currentColor",
+                strokeDasharray: circ,
+                strokeDashoffset: offset,
+                transition: "stroke-dashoffset 0.8s ease",
+              }}
+            />
+          </svg>
+          <div className="absolute inset-0 flex items-center justify-center">
+            <span className={`font-display text-lg font-semibold ${colorClass}`}>{value}%</span>
+          </div>
+        </div>
+        <div className="min-w-0">
+          <div className="text-sm font-medium leading-tight">{label}</div>
+          <div className="mt-1 text-xs leading-tight text-muted-foreground">{sublabel}</div>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+// ─── IoT Nodos Centinela ──────────────────────────────────────────────────────
+
+type NodeStatus = "ok" | "alerta" | "critico";
+
+interface NodeData {
+  id: string;
+  ubicacion: string;
+  windKmh: number;
+  windGustKmh: number;
+  windDirectionDeg: number;
+  vocPpb: number;
+  status: NodeStatus;
+}
+
+const BASE_NODES: NodeData[] = [
+  { id: "N-01", ubicacion: "Perím. Norte", windKmh: 18.0, windGustKmh: 23.0, windDirectionDeg: 22,  vocPpb: 0.30, status: "ok"     },
+  { id: "N-02", ubicacion: "Perím. Este",  windKmh: 15.0, windGustKmh: 19.0, windDirectionDeg: 70,  vocPpb: 0.12, status: "ok"     },
+  { id: "N-03", ubicacion: "Perím. Sur",   windKmh: 12.0, windGustKmh: 16.0, windDirectionDeg: 210, vocPpb: 0.82, status: "alerta" },
+  { id: "N-04", ubicacion: "Perím. Oeste", windKmh: 9.0,  windGustKmh: 13.0, windDirectionDeg: 255, vocPpb: 0.21, status: "ok"     },
+];
+
+function classifyNodeStatus(voc: number): NodeStatus {
+  if (voc >= 1.5) return "critico";
+  if (voc >= 0.5) return "alerta";
+  return "ok";
+}
+
+function NodesPanel() {
+  const [nodes, setNodes] = useState<NodeData[]>(BASE_NODES);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setNodes(prev =>
+        prev.map(n => {
+          const newVoc    = Math.max(0.05, Math.min(3,  n.vocPpb      + (Math.random() - 0.5) * 0.12));
+          const newWind   = Math.max(1,    Math.min(40, n.windKmh     + (Math.random() - 0.5) * 1.5));
+          const newGust   = Math.max(newWind, Math.min(50, n.windGustKmh + (Math.random() - 0.5) * 2));
+          return {
+            ...n,
+            windKmh:      Math.round(newWind  * 10) / 10,
+            windGustKmh:  Math.round(newGust  * 10) / 10,
+            vocPpb:       Math.round(newVoc   * 100) / 100,
+            status:       classifyNodeStatus(newVoc),
+          };
+        }),
+      );
+    }, 2500);
+    return () => clearInterval(interval);
+  }, []);
+
+  const alertCount = nodes.filter(n => n.status !== "ok").length;
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Radio className="h-4 w-4 animate-pulse text-primary" />
+          <span>Telemetría en tiempo real · actualiza cada 2.5 s</span>
+        </div>
+        {alertCount > 0 ? (
+          <Badge variant="destructive">
+            {alertCount} alerta{alertCount > 1 ? "s" : ""} activa{alertCount > 1 ? "s" : ""}
+          </Badge>
+        ) : (
+          <Badge variant="secondary" className="text-emerald-600">Todos los nodos normales</Badge>
+        )}
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {nodes.map(n => <NodeCard key={n.id} node={n} />)}
+      </div>
+
+      <div className="flex flex-wrap gap-x-6 gap-y-1.5 border-t border-border/40 pt-3 text-xs text-muted-foreground">
+        <span>Sensores: Anemómetro ultrasónico 3D + Detector PID (VOC)</span>
+        <span>Conectividad: LoRaWAN</span>
+        <span>Umbral VOC: &lt;0.5 ppb Normal · 0.5–1.5 ppb Alerta · &gt;1.5 ppb Crítico</span>
+      </div>
+    </div>
+  );
+}
+
+const STATUS_BORDER: Record<NodeStatus, string> = {
+  ok:      "border-emerald-200/50 bg-emerald-50/30",
+  alerta:  "border-amber-200/60   bg-amber-50/30",
+  critico: "border-destructive/40 bg-destructive/5",
+};
+const STATUS_BADGE: Record<NodeStatus, "secondary" | "outline" | "destructive"> = {
+  ok:      "secondary",
+  alerta:  "outline",
+  critico: "destructive",
+};
+const STATUS_LABEL: Record<NodeStatus, string> = { ok: "Normal", alerta: "Alerta", critico: "Crítico" };
+
+function NodeCard({ node }: { node: NodeData }) {
+  return (
+    <Card className={`border p-5 transition-colors duration-500 ${STATUS_BORDER[node.status]}`}>
+      <div className="flex items-start justify-between">
+        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10">
+          <Cpu className="h-4 w-4 text-primary" />
+        </div>
+        <Badge variant={STATUS_BADGE[node.status]} className="text-xs">
+          {STATUS_LABEL[node.status]}
+        </Badge>
+      </div>
+      <div className="mt-3">
+        <div className="font-mono text-xs font-semibold text-muted-foreground">{node.id}</div>
+        <div className="font-display text-base font-semibold">{node.ubicacion}</div>
+      </div>
+
+      <div className="mt-4 flex items-center justify-between">
+        <div>
+          <div className="text-xs text-muted-foreground">Viento</div>
+          <div className="font-mono text-2xl font-semibold leading-none">{node.windKmh.toFixed(1)}</div>
+          <div className="text-xs text-muted-foreground">km/h</div>
+          <div className="mt-1 text-xs text-muted-foreground">
+            Ráfagas: <span className="font-medium text-foreground">{node.windGustKmh.toFixed(1)} km/h</span>
+          </div>
+        </div>
+        <WindCompass deg={node.windDirectionDeg} />
+      </div>
+
+      <div className="mt-4">
+        <VocBar value={node.vocPpb} />
+      </div>
+    </Card>
+  );
+}
+
+function WindCompass({ deg }: { deg: number }) {
+  const dirs = ["N", "NE", "E", "SE", "S", "SO", "O", "NO"];
+  const dirLabel = dirs[Math.round(deg / 45) % 8];
+
+  return (
+    <div className="flex flex-col items-center gap-1">
+      <svg viewBox="0 0 56 56" className="h-14 w-14">
+        <circle cx="28" cy="28" r="26" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-border" />
+        <text x="28"  y="8"  textAnchor="middle" fontSize="6" className="fill-muted-foreground">N</text>
+        <text x="28"  y="53" textAnchor="middle" fontSize="6" className="fill-muted-foreground">S</text>
+        <text x="7"   y="31" textAnchor="middle" fontSize="6" className="fill-muted-foreground">O</text>
+        <text x="50"  y="31" textAnchor="middle" fontSize="6" className="fill-muted-foreground">E</text>
+        <g transform={`rotate(${deg}, 28, 28)`}>
+          <polygon points="28,8 25,26 28,23 31,26"  className="fill-primary" />
+          <polygon points="28,48 25,30 28,33 31,30" style={{ fill: "currentColor", opacity: 0.35 }} />
+        </g>
+      </svg>
+      <span className="font-mono text-xs font-medium">{dirLabel} · {deg}°</span>
+    </div>
+  );
+}
+
+function VocBar({ value }: { value: number }) {
+  const pct      = Math.min(100, (value / 3) * 100);
+  const barColor = value < 0.5 ? "bg-emerald-500" : value < 1.5 ? "bg-amber-500" : "bg-destructive";
+  const txtColor = value < 0.5 ? "text-emerald-600" : value < 1.5 ? "text-amber-600" : "text-destructive";
+
+  return (
+    <div>
+      <div className="mb-1.5 flex items-center justify-between">
+        <span className="text-xs text-muted-foreground">VOC (PID)</span>
+        <span className={`font-mono text-xs font-semibold ${txtColor}`}>{value.toFixed(2)} ppb</span>
+      </div>
+      <div className="h-2 overflow-hidden rounded-full bg-muted/60">
+        <div
+          className={`h-full rounded-full transition-all duration-700 ${barColor}`}
+          style={{ width: `${pct}%` }}
+        />
+      </div>
     </div>
   );
 }

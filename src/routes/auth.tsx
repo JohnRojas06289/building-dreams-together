@@ -63,36 +63,71 @@ function AuthPage() {
   );
 }
 
+const DEBUG_USERS = [
+  { label: "Agricultor",  email: "agricultor@agrosync.demo", role: "Carlos Mendoza · exportador" },
+  { label: "Apicultor",   email: "apicultor@agrosync.demo",  role: "María Torres · ColmenaSegura" },
+  { label: "Técnico ICA", email: "tecnico@agrosync.demo",    role: "Andrés Ríos · asistente técnico" },
+] as const;
+
+const DEBUG_PASSWORD = "AgroSync2026!";
+
 function SignInForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
-  const submit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const doSignIn = async (em: string, pw: string) => {
     setLoading(true);
-    const { error } = await authStore.signIn(email, password);
+    const { error } = await authStore.signIn(em, pw);
     setLoading(false);
     if (error) { toast.error(error); return; }
     toast.success("Bienvenido de vuelta");
     navigate({ to: "/dashboard" });
   };
 
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault();
+    void doSignIn(email, password);
+  };
+
   return (
-    <form onSubmit={submit} className="space-y-4">
-      <div className="space-y-2">
-        <Label htmlFor="email-in">Correo</Label>
-        <Input id="email-in" type="email" value={email} onChange={e => setEmail(e.target.value)} required />
+    <div className="space-y-4">
+      {/* ── DEBUG: acceso rápido ── */}
+      <div className="rounded-lg border border-dashed border-amber-400/60 bg-amber-50/50 p-3">
+        <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-amber-700">
+          Debug — acceso rápido
+        </p>
+        <div className="flex flex-col gap-1.5">
+          {DEBUG_USERS.map(u => (
+            <button
+              key={u.email}
+              type="button"
+              disabled={loading}
+              onClick={() => void doSignIn(u.email, DEBUG_PASSWORD)}
+              className="flex items-center justify-between rounded-md border border-amber-200 bg-white px-3 py-2 text-left text-xs transition-colors hover:bg-amber-50 disabled:opacity-50"
+            >
+              <span className="font-semibold text-amber-800">{u.label}</span>
+              <span className="text-amber-600">{u.role}</span>
+            </button>
+          ))}
+        </div>
       </div>
-      <div className="space-y-2">
-        <Label htmlFor="pw-in">Contraseña</Label>
-        <Input id="pw-in" type="password" value={password} onChange={e => setPassword(e.target.value)} required minLength={6} />
-      </div>
-      <Button type="submit" className="w-full" disabled={loading}>
-        {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Ingresar
-      </Button>
-    </form>
+
+      <form onSubmit={submit} className="space-y-4">
+        <div className="space-y-2">
+          <Label htmlFor="email-in">Correo</Label>
+          <Input id="email-in" type="email" value={email} onChange={e => setEmail(e.target.value)} required />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="pw-in">Contraseña</Label>
+          <Input id="pw-in" type="password" value={password} onChange={e => setPassword(e.target.value)} required minLength={6} />
+        </div>
+        <Button type="submit" className="w-full" disabled={loading}>
+          {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Ingresar
+        </Button>
+      </form>
+    </div>
   );
 }
 

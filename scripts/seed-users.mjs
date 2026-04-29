@@ -8,7 +8,7 @@
  * NUNCA expongas esta clave en el frontend.
  */
 
-const SUPABASE_URL = "https://qkumvthduszstptjuiod.supabase.co";
+const SUPABASE_URL = "https://npxiurlcgphgeanlxmpq.supabase.co";
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 if (!SERVICE_KEY) {

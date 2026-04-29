@@ -54,32 +54,31 @@ export async function fetchNasaClimate(lat: number, lon: number): Promise<NasaCl
 }
 
 export async function fetchSlopeDeg(lat: number, lon: number): Promise<number> {
+  const googleWindow = window as Window & { google?: { maps?: { ElevationService?: new () => unknown } } };
+  if (!googleWindow.google?.maps?.ElevationService) {
+    throw new Error("Maps JS no cargado aún — usando slider manual.");
+  }
+
   const delta = 0.0009;
+  const locations = [
+    { lat, lng: lon },
+    { lat: lat + delta, lng: lon },
+    { lat: lat - delta, lng: lon },
+    { lat, lng: lon + delta },
+    { lat, lng: lon - delta },
+  ];
 
-  const res = await fetch("https://api.open-elevation.com/api/v1/lookup", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      locations: [
-        { latitude: lat, longitude: lon },
-        { latitude: lat + delta, longitude: lon },
-        { latitude: lat - delta, longitude: lon },
-        { latitude: lat, longitude: lon + delta },
-        { latitude: lat, longitude: lon - delta },
-      ],
-    }),
-  });
+  type ElevResult = { elevation: number };
+  const elevator = new (googleWindow.google.maps.ElevationService as new () => {
+    getElevationForLocations: (req: { locations: typeof locations }) => Promise<{ results: ElevResult[] }>;
+  })();
 
-  if (!res.ok) throw new Error(`Open-Elevation ${res.status}`);
-
-  const data = await res.json();
-  const elevations = (data.results as { elevation: number }[]).map((row) => row.elevation);
+  const { results } = await elevator.getElevationForLocations({ locations });
   const distM = delta * 111_000;
-  const slopeNS = Math.abs(elevations[1] - elevations[2]) / (2 * distM);
-  const slopeEW = Math.abs(elevations[3] - elevations[4]) / (2 * distM);
-  const maxSlope = Math.max(slopeNS, slopeEW);
+  const slopeNS = Math.abs(results[1].elevation - results[2].elevation) / (2 * distM);
+  const slopeEW = Math.abs(results[3].elevation - results[4].elevation) / (2 * distM);
 
-  return Math.min(45, Math.round(Math.atan(maxSlope) * (180 / Math.PI)));
+  return Math.min(45, Math.round(Math.atan(Math.max(slopeNS, slopeEW)) * (180 / Math.PI)));
 }
 
 export async function fetchAllClimate(
